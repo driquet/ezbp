@@ -1,16 +1,18 @@
 module github.com/driquet/ezbp
 
-go 1.21.5
+go 1.23
 
 require (
+	github.com/BurntSushi/toml v1.5.0
+	github.com/atotto/clipboard v0.1.4
 	github.com/charmbracelet/huh v0.3.0
 	github.com/ktr0731/go-fuzzyfinder v0.8.0
+	github.com/mattn/go-sqlite3 v1.14.28
 	github.com/spf13/cobra v1.8.0
 	github.com/stretchr/testify v1.9.0
 )
 
 require (
-	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/catppuccin/go v0.2.0 // indirect
 	github.com/charmbracelet/bubbles v0.17.2-0.20240108170749-ec883029c8e6 // indirect
@@ -35,9 +37,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	golang.org/x/exp v0.0.0-20190731235908-ec7cb31e5a56 // indirect
-	golang.org/x/image v0.6.0 // indirect
-	golang.org/x/mobile v0.0.0-20230301163155-e0f57694e12c // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	golang.org/x/sync v0.4.0 // indirect
 	golang.org/x/sys v0.13.0 // indirect
 	golang.org/x/term v0.13.0 // indirect
