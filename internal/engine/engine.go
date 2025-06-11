@@ -1,8 +1,10 @@
 package engine
 
 import (
+	"encoding/csv"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"regexp"
@@ -66,6 +68,12 @@ func (bm *Engine) Names() []string {
 func (bm *Engine) Get(name string) (*boilerplate.Boilerplate, bool) {
 	bp, found := bm.boilerplates[name]
 	return bp, found
+}
+
+// Exist reports whether a boilerplate with the given name exists.
+func (bm *Engine) Exist(name string) bool {
+	_, found := bm.boilerplates[name]
+	return found
 }
 
 // SelectBoilerplate prompts the user to select a boilerplate from the available collection.
@@ -249,4 +257,101 @@ func (bm *Engine) expandFirst(value string) (string, error) {
 
 	// Replace the variable part with the determined replacement.
 	return value[:start] + replacement + value[end:], nil
+}
+
+// ImportBoilerplatesFromCSV loads boilerplates from a CSV file at the given path.
+// It expects a header row with "name,value" and adds or updates entries accordingly.
+func (bm *Engine) ImportBoilerplatesFromCSV(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("unable to open %q: %w", path, err)
+	}
+	defer f.Close()
+
+	r := csv.NewReader(f)
+
+	var (
+		overwriteAll *bool // nil: not set, true: always overwrite, false: never overwrite
+		lineIndex    int
+	)
+
+	for {
+		record, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("unable to read CSV record: %w", err)
+		}
+		if len(record) < 2 {
+			return fmt.Errorf("incorrect number of values in CSV record")
+		}
+
+		// Validate headers
+		if lineIndex == 0 {
+			if !slices.Equal(record, []string{"name", "value"}) {
+				return fmt.Errorf("unexpected CSV field names, expecting \"name, value\", got %q", strings.Join(record, ", "))
+			}
+			lineIndex++
+			continue
+		}
+
+		name, value := record[0], record[1]
+
+		if !bm.Exist(name) {
+			if err := bm.Add(name, value); err != nil {
+				return fmt.Errorf("unable to import boilerplate %q: %w", name, err)
+			}
+			continue
+		}
+
+		// There is already an existing boilerplate with this name.
+		// Ask the user what to do.
+		if overwriteAll == nil {
+			choice, err := bm.ui.Select(fmt.Sprintf("Boilerplate %q already exists. What would you like to do?", name),
+				[]string{
+					"Keep current value",
+					"Update value",
+					"Keep current value (for all)",
+					"Update value (for all)",
+				})
+			if err != nil {
+				return fmt.Errorf("user prompt failed: %w", err)
+			}
+
+			switch choice {
+			case "Keep current value":
+				// Do nothing
+				lineIndex++
+				continue
+			case "Update value":
+				// Proceed to Edit
+			case "Keep current value (for all)":
+				overwrite := false
+				overwriteAll = &overwrite
+				lineIndex++
+				continue
+			case "Update value (for all)":
+				overwrite := true
+				overwriteAll = &overwrite
+				// Proceed to Edit
+			default:
+				return fmt.Errorf("unknown selection: %q", choice)
+			}
+		}
+
+		if overwriteAll != nil && !*overwriteAll {
+			// Skipping update
+			lineIndex++
+			continue
+		}
+
+		if err := bm.Edit(name, value); err != nil {
+			return fmt.Errorf("unable to import boilerplate %q: %w", name, err)
+		}
+
+		lineIndex++
+	}
+
+	return nil
 }

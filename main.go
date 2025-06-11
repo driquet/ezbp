@@ -211,6 +211,25 @@ Use with caution as this operation cannot be undone.`,
 			return boilerplateExpand(args) // Pass the flag value
 		},
 	}
+	boilerplateImportCmd = &cobra.Command{
+		Use:   "import <file.csv>",
+		Short: "Import boilerplates from a CSV file",
+		Long: `Import boilerplate templates from a CSV file.
+
+The CSV file must contain a header row with the fields "name" and "value".
+Each subsequent row should represent a boilerplate name and its content.
+
+If a boilerplate with the same name already exists, you will be prompted to
+choose whether to keep the existing value, update it, or apply the choice for all.`,
+		Example: `  # Import boilerplates from a CSV file
+  ezbp boilerplate import templates.csv`,
+		Args:     cobra.ExactArgs(1),
+		PreRunE:  setupRuntime,
+		PostRunE: tearDownRuntime,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return bm.ImportBoilerplatesFromCSV(args[0])
+		},
+	}
 )
 
 // TODO: Define more commands and flags based on these comments.
@@ -233,6 +252,7 @@ func main() {
 		boilerplateEditCmd,
 		boilerplateDelCmd,
 		boilerplateExpandCmd,
+		boilerplateImportCmd,
 	)
 
 	rootCmd.AddCommand(boilerplateCmd)
