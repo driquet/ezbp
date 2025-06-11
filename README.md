@@ -160,8 +160,9 @@ Distributed under the MIT License. See the `LICENSE` file for more information.
 Here are some ideas for potential future enhancements to `ezbp`:
 
 *   **Remote Boilerplate Storage:** Allow syncing or storing boilerplates in remote locations such as a Git repository, GitHub Gist, or other cloud storage services.
-*   **CLI for Boilerplate Management:** Introduce dedicated CLI commands for managing boilerplates directly (e.g., `add`, `edit`, `rm`, `list`). This is a high-priority next step now that the SQLite backend is in place.
-    *   `ezbp boilerplate list`: List all available boilerplates with details.
+*   **CLI for Boilerplate Management:** Introduce dedicated CLI commands for managing boilerplates directly (e.g., `list`). This is a high-priority next step now that the SQLite backend is in place.
+    * `ezbp boilerplate list`: List all available boilerplates with details.
+    * `ezbp boilerplate healthcheck`: Check the integrity of boilerplates by verifying their structure, and formatting consistency.
 *   **Enhanced Boilerplate Syntax/Logic:**
     *   **Conditionals:** Add support for basic conditional logic within boilerplate templates (e.g., if-then-else based on prompt inputs).
     *   **Predefined Variables:** Introduce system variables (e.g., current date/time, username) that can be used in templates.
