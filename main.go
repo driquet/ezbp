@@ -7,15 +7,19 @@ import (
 	"os"
 
 	"github.com/atotto/clipboard"
+	"github.com/driquet/ezbp/internal/database"
+	"github.com/driquet/ezbp/internal/editor"
+	"github.com/driquet/ezbp/internal/engine"
 	"github.com/spf13/cobra"
 )
 
 var (
 	ui         string
-	config     Config
+	forever    bool
+	config     engine.Config
 	configPath string
-	db         Database
-	bm         *BoilerplateManager
+	db         database.Database
+	bm         *engine.Engine
 )
 
 func setupRuntime(cmd *cobra.Command, args []string) error {
@@ -23,14 +27,14 @@ func setupRuntime(cmd *cobra.Command, args []string) error {
 
 	// Possible custom config path
 	if configPath == "" {
-		configPath, err = configDirPath()
+		configPath, err = engine.ConfigDirPath()
 		if err != nil {
 			return err
 		}
 	}
 
 	// Load configuration
-	config, err = loadConfigFromFile(configPath)
+	config, err = engine.LoadConfigFromFile(configPath)
 	if err != nil {
 		return err
 	}
@@ -41,15 +45,15 @@ func setupRuntime(cmd *cobra.Command, args []string) error {
 	}
 
 	// Load database
-	db, err = NewSQLiteDatabase(config.DatabasePath)
+	db, err = database.NewSQLiteDatabase(config.DatabasePath)
 	if err != nil {
 		return err
 	}
 
 	// Create a new BoilerplateManager
-	bm, err = NewBoilerplateManager(db, config)
+	bm, err = engine.NewEngine(db, config)
 	if err != nil {
-		return fmt.Errorf("failed to create boilerplate manager: %w", err)
+		return fmt.Errorf("failed to create engine: %w", err)
 	}
 
 	return nil
@@ -102,7 +106,7 @@ immediately with the specified content.`,
 		PostRunE: tearDownRuntime,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
-				value, err := editContent(config.Editor, "")
+				value, err := editor.Edit(config.Editor, "")
 				if err != nil {
 					return err
 				}
@@ -151,13 +155,14 @@ immediately with the specified content.`,
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if _, found := bm.boilerplates[args[0]]; !found {
+			bp, found := bm.Get(args[0])
+			if !found {
 				return fmt.Errorf("unknown boilerplate %q", args[0])
 			}
 
 			if len(args) == 1 {
-				content := bm.boilerplates[args[0]].Value
-				value, err := editContent(config.Editor, content)
+				content := bp.Value
+				value, err := editor.Edit(config.Editor, content)
 				if err != nil {
 					return err
 				}
@@ -189,7 +194,7 @@ Use with caution as this operation cannot be undone.`,
 		PreRunE:  setupRuntime,
 		PostRunE: tearDownRuntime,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if _, found := bm.boilerplates[args[0]]; !found {
+			if _, found := bm.Get(args[0]); !found {
 				return fmt.Errorf("unknown boilerplate %q", args[0])
 			}
 
@@ -197,20 +202,19 @@ Use with caution as this operation cannot be undone.`,
 		},
 	}
 	boilerplateExpandCmd = &cobra.Command{
-		Use:   "expand",
-		Short: "Expand a boilerplate.",
-		// Args: cobra.PositionalArgs, // TODO: Add support for positional arguments to specify boilerplate name instead of interactive mode.
+		Use:      "expand",
+		Short:    "Expand a boilerplate.",
+		Args:     cobra.RangeArgs(0, 1),
 		PreRunE:  setupRuntime,
 		PostRunE: tearDownRuntime,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return boilerplateExpand() // Pass the flag value
+			return boilerplateExpand(args) // Pass the flag value
 		},
 	}
 )
 
 // TODO: Define more commands and flags based on these comments.
 // - boilerplate
-//   - expand <key> --clipboard --forever [name]
 //   - list: List boilerplates
 // - remote:
 //      - list:
@@ -220,6 +224,8 @@ Use with caution as this operation cannot be undone.`,
 func main() {
 	// Flags
 	rootCmd.PersistentFlags().StringVar(&configPath, "config", "", "Overrides default configuration path.")
+
+	boilerplateExpandCmd.Flags().BoolVarP(&forever, "forever", "f", false, "Continuously expand boilerplates.")
 	boilerplateExpandCmd.Flags().StringVar(&ui, "ui", "", "Specify UI: 'terminal' or 'rofi'. Overrides config.")
 
 	boilerplateCmd.AddCommand(
@@ -239,9 +245,23 @@ func main() {
 // It creates a new BoilerplateManager, prompts the user to select a boilerplate,
 // expands the selected boilerplate, and copies the result to the clipboard.
 // This function is designed to run in a loop, allowing the user to expand multiple boilerplates.
-func boilerplateExpand() error {
+func boilerplateExpand(args []string) error {
+	if len(args) == 1 {
+		// Expand the selected boilerplate.
+		value, err := bm.Expand(args[0])
+		if err != nil {
+			return fmt.Errorf("failed to expand boilerplate %q: %w", args[0], err)
+		}
+
+		// Copy the expanded boilerplate to the clipboard.
+		if err := clipboard.WriteAll(value); err != nil {
+			return fmt.Errorf("failed to copy to clipboard: %w", err)
+		}
+
+		return nil
+	}
+
 	// Loop indefinitely to allow expanding multiple boilerplates.
-	// TODO: The loop mechanism should be decided based on the --forever flag
 	for {
 		// Prompt the user to select a boilerplate.
 		name, err := bm.SelectBoilerplate()
@@ -256,11 +276,14 @@ func boilerplateExpand() error {
 		}
 
 		// Copy the expanded boilerplate to the clipboard.
-		// TODO: The clipboard feature should be enabled using the --clipboard flag (stdout otherwise).
-		// TODO: Add a confirmation message that the value was copied to the clipboard.
-		// fmt.Printf("Boilerplate %q expanded and copied to clipboard.\n", name)
 		if err := clipboard.WriteAll(value); err != nil {
 			return fmt.Errorf("failed to copy to clipboard: %w", err)
 		}
+
+		if !forever {
+			break
+		}
 	}
+
+	return nil
 }

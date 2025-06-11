@@ -1,9 +1,10 @@
-package main
+package database
 
 import (
 	"path/filepath"
 	"testing"
 
+	"github.com/driquet/ezbp/internal/boilerplate"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -15,7 +16,7 @@ type MockDatabase struct {
 }
 
 // GetAllBoilerplates mocks the GetAllBoilerplates method
-func (m *MockDatabase) GetAllBoilerplates() (map[string]*Boilerplate, error) {
+func (m *MockDatabase) GetAllBoilerplates() (map[string]*boilerplate.Boilerplate, error) {
 	args := m.Called()
 
 	// Handle nil return case
@@ -23,11 +24,11 @@ func (m *MockDatabase) GetAllBoilerplates() (map[string]*Boilerplate, error) {
 		return nil, args.Error(1)
 	}
 
-	return args.Get(0).(map[string]*Boilerplate), args.Error(1)
+	return args.Get(0).(map[string]*boilerplate.Boilerplate), args.Error(1)
 }
 
 // GetBoilerplateByName mocks the GetBoilerplateByName method
-func (m *MockDatabase) GetBoilerplateByName(name string) (*Boilerplate, error) {
+func (m *MockDatabase) GetBoilerplateByName(name string) (*boilerplate.Boilerplate, error) {
 	args := m.Called(name)
 
 	// Handle nil return case
@@ -35,17 +36,17 @@ func (m *MockDatabase) GetBoilerplateByName(name string) (*Boilerplate, error) {
 		return nil, args.Error(1)
 	}
 
-	return args.Get(0).(*Boilerplate), args.Error(1)
+	return args.Get(0).(*boilerplate.Boilerplate), args.Error(1)
 }
 
 // CreateBoilerplate mocks the CreateBoilerplate method
-func (m *MockDatabase) CreateBoilerplate(boilerplate *Boilerplate) error {
+func (m *MockDatabase) CreateBoilerplate(boilerplate *boilerplate.Boilerplate) error {
 	args := m.Called(boilerplate)
 	return args.Error(0)
 }
 
 // UpdateBoilerplate mocks the UpdateBoilerplate method
-func (m *MockDatabase) UpdateBoilerplate(boilerplate *Boilerplate) error {
+func (m *MockDatabase) UpdateBoilerplate(boilerplate *boilerplate.Boilerplate) error {
 	args := m.Called(boilerplate)
 	return args.Error(0)
 }
@@ -71,7 +72,7 @@ func (m *MockDatabase) Close() error {
 func TestSQLiteDatabase_Integration(t *testing.T) {
 	// Create a temporary database file
 	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, defaultDatabaseFileName)
+	dbPath := filepath.Join(tempDir, "ezbp.db")
 
 	// Create new SQLite database
 	db, err := NewSQLiteDatabase(dbPath)
@@ -79,7 +80,7 @@ func TestSQLiteDatabase_Integration(t *testing.T) {
 	defer db.Close()
 
 	// Test data - several boilerplates to add
-	testBoilerplates := []*Boilerplate{
+	testBoilerplates := []*boilerplate.Boilerplate{
 		{
 			Name:  "greeting",
 			Value: "Hello {{name}}, welcome to our service!",
@@ -190,7 +191,7 @@ func TestSQLiteDatabase_Integration(t *testing.T) {
 	// Test additional operations
 	t.Run("Test update and delete operations", func(t *testing.T) {
 		// Update a boilerplate
-		updatedGreeting := &Boilerplate{
+		updatedGreeting := &boilerplate.Boilerplate{
 			Name:  "greeting",
 			Value: "Hi {{name}}, welcome back!",
 			Count: 10, // Update count as well
@@ -231,7 +232,7 @@ func TestSQLiteDatabase_Integration(t *testing.T) {
 func TestSQLiteDatabase_EdgeCases(t *testing.T) {
 	// Create a temporary database file
 	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, defaultDatabaseFileName)
+	dbPath := filepath.Join(tempDir, "ezbp.db")
 
 	db, err := NewSQLiteDatabase(dbPath)
 	require.NoError(t, err)
@@ -250,7 +251,7 @@ func TestSQLiteDatabase_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("Test duplicate creation", func(t *testing.T) {
-		bp := &Boilerplate{
+		bp := &boilerplate.Boilerplate{
 			Name:  "duplicate",
 			Value: "test value",
 			Count: 0,
@@ -269,7 +270,7 @@ func TestSQLiteDatabase_EdgeCases(t *testing.T) {
 func TestSQLiteDatabase_PersistenceEmpty(t *testing.T) {
 	// Create a temporary database file
 	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, defaultDatabaseFileName)
+	dbPath := filepath.Join(tempDir, "ezbp.db")
 
 	// Create empty database and close
 	t.Run("Create empty database", func(t *testing.T) {
@@ -300,9 +301,9 @@ func TestSQLiteDatabase_PersistenceEmpty(t *testing.T) {
 func TestSQLiteDatabase_Persistence(t *testing.T) {
 	// Create a temporary database file
 	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, defaultDatabaseFileName)
+	dbPath := filepath.Join(tempDir, "ezbp.db")
 
-	initialBoilerplates := []*Boilerplate{
+	initialBoilerplates := []*boilerplate.Boilerplate{
 		{
 			Name:  "greeting",
 			Value: "Hello {{name}}, welcome to our service!",
@@ -321,7 +322,7 @@ func TestSQLiteDatabase_Persistence(t *testing.T) {
 	}
 
 	// Phase 1: Create, insert, modify, and close
-	var modifiedBoilerplates []*Boilerplate
+	var modifiedBoilerplates []*boilerplate.Boilerplate
 	t.Run("Create database, insert and modify values", func(t *testing.T) {
 		db, err := NewSQLiteDatabase(dbPath)
 		require.NoError(t, err)
@@ -333,10 +334,10 @@ func TestSQLiteDatabase_Persistence(t *testing.T) {
 		}
 
 		// Modify some boilerplates
-		modifiedBoilerplates = make([]*Boilerplate, len(initialBoilerplates))
+		modifiedBoilerplates = make([]*boilerplate.Boilerplate, len(initialBoilerplates))
 		for i, bp := range initialBoilerplates {
 			// Create a modified copy
-			modified := &Boilerplate{
+			modified := &boilerplate.Boilerplate{
 				Name:  bp.Name,
 				Value: bp.Value + " [MODIFIED]",
 				Count: bp.Count + 10,
@@ -354,7 +355,7 @@ func TestSQLiteDatabase_Persistence(t *testing.T) {
 			require.NoError(t, err)
 
 			// Store expected final state
-			modifiedBoilerplates[i] = &Boilerplate{
+			modifiedBoilerplates[i] = &boilerplate.Boilerplate{
 				Name:  modified.Name,
 				Value: modified.Value,
 				Count: modified.Count,

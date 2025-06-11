@@ -1,25 +1,26 @@
-package main
+package database
 
 import (
 	"database/sql"
 	"fmt"
 
+	"github.com/driquet/ezbp/internal/boilerplate"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 // Database defines the interface for boilerplate database operations
 type Database interface {
 	// GetAllBoilerplates returns all boilerplates as a map with name as key
-	GetAllBoilerplates() (map[string]*Boilerplate, error)
+	GetAllBoilerplates() (map[string]*boilerplate.Boilerplate, error)
 
 	// GetBoilerplateByName returns a specific boilerplate by name
-	GetBoilerplateByName(name string) (*Boilerplate, error)
+	GetBoilerplateByName(name string) (*boilerplate.Boilerplate, error)
 
 	// CreateBoilerplate creates a new boilerplate
-	CreateBoilerplate(boilerplate *Boilerplate) error
+	CreateBoilerplate(boilerplate *boilerplate.Boilerplate) error
 
 	// UpdateBoilerplate updates an existing boilerplate
-	UpdateBoilerplate(boilerplate *Boilerplate) error
+	UpdateBoilerplate(boilerplate *boilerplate.Boilerplate) error
 
 	// DeleteBoilerplate deletes a boilerplate by name
 	DeleteBoilerplate(name string) error
@@ -68,7 +69,7 @@ func (s *SQLiteDatabase) initSchema() error {
 }
 
 // GetAllBoilerplates returns all boilerplates as a map with name as key
-func (s *SQLiteDatabase) GetAllBoilerplates() (map[string]*Boilerplate, error) {
+func (s *SQLiteDatabase) GetAllBoilerplates() (map[string]*boilerplate.Boilerplate, error) {
 	query := "SELECT name, value, count FROM boilerplates ORDER BY name"
 	rows, err := s.db.Query(query)
 	if err != nil {
@@ -76,9 +77,9 @@ func (s *SQLiteDatabase) GetAllBoilerplates() (map[string]*Boilerplate, error) {
 	}
 	defer rows.Close()
 
-	boilerplates := make(map[string]*Boilerplate)
+	boilerplates := make(map[string]*boilerplate.Boilerplate)
 	for rows.Next() {
-		b := &Boilerplate{}
+		b := &boilerplate.Boilerplate{}
 		if err := rows.Scan(&b.Name, &b.Value, &b.Count); err != nil {
 			return nil, err
 		}
@@ -89,11 +90,11 @@ func (s *SQLiteDatabase) GetAllBoilerplates() (map[string]*Boilerplate, error) {
 }
 
 // GetBoilerplateByName returns a specific boilerplate by name
-func (s *SQLiteDatabase) GetBoilerplateByName(name string) (*Boilerplate, error) {
+func (s *SQLiteDatabase) GetBoilerplateByName(name string) (*boilerplate.Boilerplate, error) {
 	query := "SELECT name, value, count FROM boilerplates WHERE name = ?"
 	row := s.db.QueryRow(query, name)
 
-	var b Boilerplate
+	var b boilerplate.Boilerplate
 	err := row.Scan(&b.Name, &b.Value, &b.Count)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -106,16 +107,16 @@ func (s *SQLiteDatabase) GetBoilerplateByName(name string) (*Boilerplate, error)
 }
 
 // CreateBoilerplate creates a new boilerplate
-func (s *SQLiteDatabase) CreateBoilerplate(boilerplate *Boilerplate) error {
+func (s *SQLiteDatabase) CreateBoilerplate(bp *boilerplate.Boilerplate) error {
 	query := "INSERT INTO boilerplates (name, value, count) VALUES (?, ?, ?)"
-	_, err := s.db.Exec(query, boilerplate.Name, boilerplate.Value, boilerplate.Count)
+	_, err := s.db.Exec(query, bp.Name, bp.Value, bp.Count)
 	return err
 }
 
 // UpdateBoilerplate updates an existing boilerplate
-func (s *SQLiteDatabase) UpdateBoilerplate(boilerplate *Boilerplate) error {
+func (s *SQLiteDatabase) UpdateBoilerplate(bp *boilerplate.Boilerplate) error {
 	query := "UPDATE boilerplates SET value = ?, count = ? WHERE name = ?"
-	result, err := s.db.Exec(query, boilerplate.Value, boilerplate.Count, boilerplate.Name)
+	result, err := s.db.Exec(query, bp.Value, bp.Count, bp.Name)
 	if err != nil {
 		return err
 	}
@@ -126,7 +127,7 @@ func (s *SQLiteDatabase) UpdateBoilerplate(boilerplate *Boilerplate) error {
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("unknown boilerplate %q", boilerplate.Name)
+		return fmt.Errorf("unknown boilerplate %q", bp.Name)
 	}
 
 	return nil

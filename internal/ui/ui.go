@@ -1,6 +1,6 @@
 // Package main provides different user interface implementations for ezbp.
 // It includes a fuzzy finder UI and a terminal-based UI.
-package main
+package ui
 
 import (
 	"bufio"
@@ -11,7 +11,11 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/driquet/ezbp/internal/boilerplate"
 
 	fuzzyfinder "github.com/ktr0731/go-fuzzyfinder"
 )
@@ -28,7 +32,7 @@ var ErrUserAborted = huh.ErrUserAborted
 type UI interface {
 	// SelectBoilerplate asks the user to choose a boilerplate from a map of available boilerplates.
 	// It returns the name of the selected boilerplate or an error if the selection fails.
-	SelectBoilerplate(boilerplates map[string]*Boilerplate) (string, error)
+	SelectBoilerplate(boilerplates map[string]*boilerplate.Boilerplate) (string, error)
 
 	// Select asks the user to choose among a list of possible string choices.
 	// It takes a prompt message and a slice of choices.
@@ -62,10 +66,10 @@ func NewFuzzy(config FuzzyConfig) (UI, error) {
 // It sorts the boilerplates by usage count in descending order before presenting them to the user.
 // It displays the usage count and name of each boilerplate in the fuzzy finder.
 // A preview window shows the value of the currently selected boilerplate.
-func (u *Fuzzy) SelectBoilerplate(boilerplates map[string]*Boilerplate) (string, error) {
+func (u *Fuzzy) SelectBoilerplate(boilerplates map[string]*boilerplate.Boilerplate) (string, error) {
 	// Convert the map of boilerplates to a slice for sorting and fuzzy finding.
 	// TODO: Could be done using slices/maps utils?
-	var bps []*Boilerplate
+	var bps []*boilerplate.Boilerplate
 	for _, bp := range boilerplates {
 		bps = append(bps, bp)
 	}
@@ -136,10 +140,10 @@ func NewTermUI() UI {
 // SelectBoilerplate implements the UI interface method for selecting a boilerplate using a terminal select prompt.
 // It sorts the boilerplates by usage count in descending order.
 // It uses huh.NewSelect to present the options to the user.
-func (u *TermUI) SelectBoilerplate(boilerplates map[string]*Boilerplate) (string, error) {
+func (u *TermUI) SelectBoilerplate(boilerplates map[string]*boilerplate.Boilerplate) (string, error) {
 	// Convert the map of boilerplates to a slice for sorting and display.
 	// TODO: Could be done using slices/maps utils?
-	var bps []*Boilerplate
+	var bps []*boilerplate.Boilerplate
 	for _, bp := range boilerplates {
 		bps = append(bps, bp)
 	}
@@ -286,8 +290,8 @@ func (u *RofiUI) runRofi(prompt string, input string, args []string) (string, er
 }
 
 // SelectBoilerplate implements the UI interface method for selecting a boilerplate using Rofi.
-func (u *RofiUI) SelectBoilerplate(boilerplates map[string]*Boilerplate) (string, error) {
-	var bps []*Boilerplate
+func (u *RofiUI) SelectBoilerplate(boilerplates map[string]*boilerplate.Boilerplate) (string, error) {
+	var bps []*boilerplate.Boilerplate
 	for _, bp := range boilerplates {
 		bps = append(bps, bp)
 	}
@@ -347,4 +351,247 @@ func (u *RofiUI) Prompt(prompt string) (string, error) {
 	// If it returns empty string for other reasons (e.g. user just hits enter),
 	// it's still a valid (empty) input.
 	return response, nil
+}
+
+// TerminalUI implements the UI interface using Bubble Tea and Huh
+type TerminalUI struct{}
+
+// NewTerminalUI creates a new TerminalUI instance
+func NewTerminalUI() *TerminalUI {
+	return &TerminalUI{}
+}
+
+// SelectBoilerplate displays boilerplates with preview using a custom Bubble Tea model
+func (t *TerminalUI) SelectBoilerplate(boilerplates map[string]*boilerplate.Boilerplate) (string, error) {
+	if len(boilerplates) == 0 {
+		return "", fmt.Errorf("no boilerplates available")
+	}
+
+	// Convert map to sorted slice
+	var sortedBoilerplates []*boilerplate.Boilerplate
+	for _, bp := range boilerplates {
+		sortedBoilerplates = append(sortedBoilerplates, bp)
+	}
+
+	// Sort by count (descending)
+	sort.Slice(sortedBoilerplates, func(i, j int) bool {
+		return sortedBoilerplates[i].Count > sortedBoilerplates[j].Count
+	})
+
+	// Create the selection model
+	model := newBoilerplateSelector(sortedBoilerplates)
+
+	program := tea.NewProgram(model, tea.WithAltScreen())
+	finalModel, err := program.Run()
+	if err != nil {
+		return "", fmt.Errorf("failed to run selection: %w", err)
+	}
+
+	result := finalModel.(*boilerplateSelectorModel)
+	if result.cancelled {
+		return "", fmt.Errorf("selection cancelled")
+	}
+
+	return result.selectedName, nil
+}
+
+// Select uses huh.Form for simple selection
+func (t *TerminalUI) Select(prompt string, choices []string) (string, error) {
+	if len(choices) == 0 {
+		return "", fmt.Errorf("no choices available")
+	}
+
+	var selected string
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title(prompt).
+				Options(huh.NewOptions(choices...)...).
+				Value(&selected),
+		),
+	)
+
+	if err := form.Run(); err != nil {
+		return "", fmt.Errorf("selection failed: %w", err)
+	}
+
+	return selected, nil
+}
+
+// Prompt uses huh.Form for text input
+func (t *TerminalUI) Prompt(prompt string) (string, error) {
+	var input string
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title(prompt).
+				Value(&input),
+		),
+	)
+
+	if err := form.Run(); err != nil {
+		return "", fmt.Errorf("prompt failed: %w", err)
+	}
+
+	return input, nil
+}
+
+// boilerplateSelectorModel is the Bubble Tea model for boilerplate selection with preview
+type boilerplateSelectorModel struct {
+	boilerplates  []*boilerplate.Boilerplate
+	selectedIndex int
+	selectedName  string
+	cancelled     bool
+	viewport      viewport.Model
+	ready         bool
+	width         int
+	height        int
+}
+
+func newBoilerplateSelector(boilerplates []*boilerplate.Boilerplate) *boilerplateSelectorModel {
+	vp := viewport.New(0, 0)
+
+	return &boilerplateSelectorModel{
+		boilerplates:  boilerplates,
+		selectedIndex: 0,
+		viewport:      vp,
+	}
+}
+
+func (m *boilerplateSelectorModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m *boilerplateSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+
+		// Reserve space for the list (left side, 40% of width)
+		listWidth := int(float64(msg.Width) * 0.4)
+		previewWidth := msg.Width - listWidth - 3 // 3 for borders and spacing
+
+		if previewWidth < 20 {
+			previewWidth = 20
+		}
+
+		m.viewport.Width = previewWidth
+		m.viewport.Height = msg.Height - 4 // Reserve space for title and instructions
+
+		if !m.ready {
+			m.ready = true
+			m.updatePreview()
+		}
+
+		return m, nil
+
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q", "esc":
+			m.cancelled = true
+			return m, tea.Quit
+
+		case "enter":
+			if len(m.boilerplates) > 0 {
+				m.selectedName = m.boilerplates[m.selectedIndex].Name
+			}
+			return m, tea.Quit
+
+		case "up", "k":
+			if m.selectedIndex > 0 {
+				m.selectedIndex--
+				m.updatePreview()
+			}
+
+		case "down", "j":
+			if m.selectedIndex < len(m.boilerplates)-1 {
+				m.selectedIndex++
+				m.updatePreview()
+			}
+		}
+	}
+
+	var cmd tea.Cmd
+	m.viewport, cmd = m.viewport.Update(msg)
+	return m, cmd
+}
+
+func (m *boilerplateSelectorModel) updatePreview() {
+	if len(m.boilerplates) == 0 {
+		return
+	}
+
+	selected := m.boilerplates[m.selectedIndex]
+	content := fmt.Sprintf("Name: %s\nUsage Count: %d\n\n%s",
+		selected.Name, selected.Count, selected.Value)
+	m.viewport.SetContent(content)
+}
+
+func (m *boilerplateSelectorModel) View() string {
+	if !m.ready {
+		return "\n  Initializing..."
+	}
+
+	// Styles
+	selectedStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("212")).
+		Background(lipgloss.Color("57")).
+		Bold(true)
+
+	normalStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240"))
+
+	titleStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("205")).
+		Bold(true)
+
+	borderStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("62"))
+
+	// Build the list
+	var listItems []string
+	listItems = append(listItems, titleStyle.Render("Select Boilerplate:"))
+	listItems = append(listItems, "")
+
+	for i, bp := range m.boilerplates {
+		line := fmt.Sprintf("  %s (used %d times)", bp.Name, bp.Count)
+		if i == m.selectedIndex {
+			line = selectedStyle.Render("▶ " + line)
+		} else {
+			line = normalStyle.Render("  " + line)
+		}
+		listItems = append(listItems, line)
+	}
+
+	// Calculate dimensions
+	listWidth := int(float64(m.width) * 0.4)
+	if listWidth < 30 {
+		listWidth = 30
+	}
+
+	// Build the list view
+	listView := strings.Join(listItems, "\n")
+	if len(listView) > 0 {
+		listView = lipgloss.NewStyle().
+			Width(listWidth).
+			Height(m.height - 4).
+			Render(listView)
+	}
+
+	// Build preview
+	previewTitle := titleStyle.Render("Preview:")
+	previewContent := borderStyle.Render(m.viewport.View())
+	preview := lipgloss.JoinVertical(lipgloss.Left, previewTitle, previewContent)
+
+	// Join list and preview horizontally
+	main := lipgloss.JoinHorizontal(lipgloss.Top, listView, "  ", preview)
+
+	// Add instructions
+	instructions := normalStyle.Render("↑/↓: navigate • enter: select • q/esc: quit")
+
+	return lipgloss.JoinVertical(lipgloss.Left, main, "", instructions)
 }

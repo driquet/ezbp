@@ -78,7 +78,7 @@ The `ezbp` directory and the `config.toml` file are automatically created with d
 
         # Rofi User Interface settings
         # These settings are used if default_ui = "rofi" or --ui=rofi is specified.
-        [RofiUI]
+        [rofi]
           # Path to the Rofi executable.
           path = "rofi" # Or specify full path, e.g., "/usr/bin/rofi"
           # Optional: Specify a Rofi theme file.
@@ -161,9 +161,6 @@ Here are some ideas for potential future enhancements to `ezbp`:
 
 *   **Remote Boilerplate Storage:** Allow syncing or storing boilerplates in remote locations such as a Git repository, GitHub Gist, or other cloud storage services.
 *   **CLI for Boilerplate Management:** Introduce dedicated CLI commands for managing boilerplates directly (e.g., `add`, `edit`, `rm`, `list`). This is a high-priority next step now that the SQLite backend is in place.
-    *   `ezbp boilerplate add`: Interactively add a new boilerplate.
-    *   `ezbp boilerplate edit <name>`: Edit an existing boilerplate.
-    *   `ezbp boilerplate rm <name>`: Remove a boilerplate.
     *   `ezbp boilerplate list`: List all available boilerplates with details.
 *   **Enhanced Boilerplate Syntax/Logic:**
     *   **Conditionals:** Add support for basic conditional logic within boilerplate templates (e.g., if-then-else based on prompt inputs).

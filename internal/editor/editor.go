@@ -1,4 +1,4 @@
-package main
+package editor
 
 import (
 	"fmt"
@@ -7,8 +7,8 @@ import (
 	"runtime"
 )
 
-// getDefaultEditor returns the user's preferred editor.
-func getDefaultEditor(editor string) string {
+// DefaultEditor returns the user's preferred editor.
+func DefaultEditor(editor string) string {
 	if editor != "" {
 		return editor
 	}
@@ -32,7 +32,9 @@ func getDefaultEditor(editor string) string {
 	}
 }
 
-func editContent(editor, initialContent string) (string, error) {
+// Edit opens the specified editor with initial content in a temporary file
+// and returns the edited content after the editor is closed.
+func Edit(editor, initialContent string) (string, error) {
 	// Create temporary file
 	filename, err := createTempFile(initialContent)
 	if err != nil {
@@ -74,7 +76,7 @@ func createTempFile(initialContent string) (string, error) {
 
 // openEditor opens the specified file in the user's default editor
 func openEditor(editor, filename string) error {
-	editor = getDefaultEditor(editor)
+	editor = DefaultEditor(editor)
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {

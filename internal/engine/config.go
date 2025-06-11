@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"fmt"
@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/BurntSushi/toml"
+	"github.com/driquet/ezbp/internal/editor"
+	"github.com/driquet/ezbp/internal/ui"
 )
 
 // Config holds the configuration for the BoilerplateManager.
@@ -15,12 +17,11 @@ type Config struct {
 	// DefaultUI specifies the default user interface to use ("terminal" or "rofi").
 	// This can be overridden by the --ui command-line flag.
 	DefaultUI string `toml:"default_ui"`
-	// TODO: Description
-	// TODO: Update default configuration file
+	// Editor specifies the text editor command to use for editing boilerplates.
 	Editor string `toml:"editor"`
 	// Rofi holds configuration specific to the Rofi user interface.
 	// These settings are only active if DefaultUI is "rofi" or if Rofi is selected via the --ui flag.
-	Rofi RofiConfig `toml:"rofi"`
+	Rofi ui.RofiConfig `toml:"rofi"`
 }
 
 const (
@@ -28,8 +29,9 @@ const (
 	defaultDatabaseFileName = "ezbp.db"
 )
 
-// TODO:
-func configDirPath() (string, error) {
+// ConfigDirPath returns the path to the application's configuration directory
+// and creates it if it doesn't exist.O:
+func ConfigDirPath() (string, error) {
 	userConfigPath, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("unable to retrieve user config path: %w", err)
@@ -48,15 +50,15 @@ func configDirPath() (string, error) {
 	return configDirPath, nil
 }
 
-// loadConfigFromFile loads the configuration from a TOML file.
+// LoadConfigFromFile loads the configuration from a TOML file.
 // It checks for the config file in the user's config directory (e.g., ~/.config/ezbp/config.toml).
 // If the file doesn't exist, it creates a default one.
 // The default database path is ~/.config/ezbp/ezbp.db.
-func loadConfigFromFile(configDir string) (Config, error) {
+func LoadConfigFromFile(configDir string) (Config, error) {
 	configFilePath := filepath.Join(configDir, defaultConfigFileName)
 
 	// Define default Rofi configuration
-	defaultRofiConfig := RofiConfig{
+	defaultRofiConfig := ui.RofiConfig{
 		Path:       "rofi", // Default path for Rofi executable
 		Theme:      "",     // Empty means Rofi's default theme
 		SelectArgs: []string{},
@@ -85,13 +87,14 @@ func loadConfigFromFile(configDir string) (Config, error) {
 		// in the way we want for a default config file.
 		// So, we'll manually construct the TOML content for a new file to include comments.
 		defaultTomlContent := fmt.Sprintf(`database_path = "%s"
-# remote_csv = ""
-# color_config = ""
 
 # default_ui specifies the default user interface.
 # Valid options are "terminal" or "rofi".
 # This can be overridden by the --ui command-line flag.
 default_ui = "%s"
+
+# editor specifies the text editor command to use for editing boilerplates.
+editor = "%s"
 
 # Rofi User Interface settings
 # These settings are used if default_ui = "rofi" or --ui=rofi is specified.
@@ -109,6 +112,7 @@ default_ui = "%s"
   # input_args = []
 `, defaultConfig.DatabasePath, // Use Go's string formatting to escape path if needed
 			defaultConfig.DefaultUI,
+			editor.DefaultEditor(""),
 			defaultConfig.Rofi.Path,
 		)
 

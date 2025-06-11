@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"errors"
@@ -9,27 +9,23 @@ import (
 	"slices"
 	"strings"
 
-	_ "github.com/mattn/go-sqlite3" // SQLite driver
+	"github.com/driquet/ezbp/internal/boilerplate"
+	"github.com/driquet/ezbp/internal/database"
+	"github.com/driquet/ezbp/internal/ui"
 )
 
-// Boilerplate represents a single boilerplate template.
-type Boilerplate struct {
-	// Name is the unique identifier for the boilerplate.
-	Name string
-	// Value is the template string of the boilerplate.
-	// It can contain variables in the format [[variable_name]] or {{prompt}}.
-	Value string
-	// Count is the number of times this boilerplate has been used.
-	Count int
+// Engine manages a collection of boilerplates.
+type Engine struct {
+	config       Config
+	db           database.Database
+	ui           ui.UI
+	boilerplates map[string]*boilerplate.Boilerplate
 }
 
-// BoilerplateManager manages a collection of boilerplates.
-type BoilerplateManager struct {
-	config       Config
-	db           Database
-	ui           UI
-	boilerplates map[string]*Boilerplate
-}
+var (
+	ErrBoilerplateAlreadyExist = errors.New("boilerplate already exists")
+	ErrBoilerplateUnknown      = errors.New("boilerplate not found")
+)
 
 // variableRe is a regular expression used to find variables in boilerplate strings.
 // It matches variables in two formats:
@@ -37,16 +33,15 @@ type BoilerplateManager struct {
 // - {{prompt}}: Represents a user prompt.
 var variableRe = regexp.MustCompile(`(\[\[([a-zA-Z0-9_]+)\]\]|{{[^}]+}})`)
 
-// NewBoilerplateManager creates a new BoilerplateManager.
+// NewEngine creates a new Engine.
 // It loads the configuration, initializes the database, loads boilerplates,
 // and sets up the UI based on preference (CLI flag > config > default).
-func NewBoilerplateManager(db Database, config Config) (*BoilerplateManager, error) {
-	var selectedUI UI
+func NewEngine(db database.Database, config Config) (*Engine, error) {
+	var selectedUI ui.UI
 	if config.DefaultUI == "rofi" {
-		selectedUI = NewRofiUI(config.Rofi)
+		selectedUI = ui.NewRofiUI(config.Rofi)
 	} else { // finalUiChoice == "terminal" or any other fallback
-		// TODO: TermUI or Fuzzy? Don't remember
-		selectedUI = NewTermUI()
+		selectedUI = ui.NewTerminalUI()
 	}
 
 	boilerplates, err := db.GetAllBoilerplates()
@@ -54,7 +49,7 @@ func NewBoilerplateManager(db Database, config Config) (*BoilerplateManager, err
 		return nil, err
 	}
 
-	return &BoilerplateManager{
+	return &Engine{
 		config:       config,
 		db:           db,
 		ui:           selectedUI,
@@ -62,18 +57,26 @@ func NewBoilerplateManager(db Database, config Config) (*BoilerplateManager, err
 	}, nil
 }
 
-func (bm *BoilerplateManager) Names() []string {
+// Names returns the names of the boilerplates.
+func (bm *Engine) Names() []string {
 	return slices.Sorted(maps.Keys(bm.boilerplates))
+}
+
+// Get retrieves a boilerplate by name and returns whether it was found.
+func (bm *Engine) Get(name string) (*boilerplate.Boilerplate, bool) {
+	bp, found := bm.boilerplates[name]
+	return bp, found
 }
 
 // SelectBoilerplate prompts the user to select a boilerplate from the available collection.
 // It returns the name of the selected boilerplate.
-func (bm *BoilerplateManager) SelectBoilerplate() (string, error) {
+func (bm *Engine) SelectBoilerplate() (string, error) {
 	return bm.ui.SelectBoilerplate(bm.boilerplates)
 }
 
-// TODO:
-func (bm *BoilerplateManager) Add(name string, value string) error {
+// Add creates a new boilerplate with the given name and value.
+// Returns an error if the name or value is empty, or if a boilerplate with the same name already exists.
+func (bm *Engine) Add(name string, value string) error {
 	if name == "" {
 		return errors.New("empty boilerplate name")
 	}
@@ -82,19 +85,28 @@ func (bm *BoilerplateManager) Add(name string, value string) error {
 		return errors.New("empty boilerplate value")
 	}
 
-	if err := bm.db.CreateBoilerplate(&Boilerplate{
+	if _, found := bm.boilerplates[name]; found {
+		return ErrBoilerplateAlreadyExist
+	}
+
+	bp := &boilerplate.Boilerplate{
 		Name:  name,
 		Value: value,
 		Count: 0,
-	}); err != nil {
+	}
+
+	// Add boilerplate both to local map and database.
+	bm.boilerplates[name] = bp
+	if err := bm.db.CreateBoilerplate(bp); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-// TODO:
-func (bm *BoilerplateManager) Edit(name string, value string) error {
+// Edit updates the value of an existing boilerplate.
+// Returns an error if the name or value is empty, or if the boilerplate doesn't exist.
+func (bm *Engine) Edit(name string, value string) error {
 	if name == "" {
 		return errors.New("empty boilerplate name")
 	}
@@ -103,24 +115,33 @@ func (bm *BoilerplateManager) Edit(name string, value string) error {
 		return errors.New("empty boilerplate value")
 	}
 
-	// TODO: Need to retrieve the count
-	if err := bm.db.UpdateBoilerplate(&Boilerplate{
-		Name:  name,
-		Value: value,
-	}); err != nil {
+	bp, found := bm.boilerplates[name]
+	if !found {
+		return ErrBoilerplateUnknown
+	}
+
+	bp.Value = value
+
+	// Edit boilerplate both in local map and database.
+	bm.boilerplates[name] = bp
+	if err := bm.db.UpdateBoilerplate(bp); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-// TODO:
-func (bm *BoilerplateManager) Delete(name string) error {
+// Delete removes a boilerplate by name.
+// Returns an error if the name is empty, unknown, or deletion fails.
+func (bm *Engine) Delete(name string) error {
 	if name == "" {
 		return errors.New("empty boilerplate name")
 	}
 
-	// TODO: should ask confirmation?
+	if _, found := bm.boilerplates[name]; !found {
+		return ErrBoilerplateUnknown
+	}
+
 	if err := bm.db.DeleteBoilerplate(name); err != nil {
 		return err
 	}
@@ -132,7 +153,7 @@ func (bm *BoilerplateManager) Delete(name string) error {
 // It replaces all variables in the boilerplate string with their corresponding values.
 // Variables can be either other boilerplates or user prompts.
 // The usage count of the boilerplate is incremented after expansion, both in memory and in the database.
-func (bm *BoilerplateManager) Expand(name string) (string, error) {
+func (bm *Engine) Expand(name string) (string, error) {
 	bp, found := bm.boilerplates[name]
 	if !found {
 		return "", fmt.Errorf("unknown boilerplate %q", name)
@@ -159,7 +180,7 @@ func (bm *BoilerplateManager) Expand(name string) (string, error) {
 	return after, nil
 }
 
-func (bm *BoilerplateManager) incrementBoilerplateCount(name string) error {
+func (bm *Engine) incrementBoilerplateCount(name string) error {
 	if _, found := bm.boilerplates[name]; !found {
 		return fmt.Errorf("unknown boilerplate %q", name)
 	}
@@ -179,7 +200,7 @@ func (bm *BoilerplateManager) incrementBoilerplateCount(name string) error {
 // If the variable is a user prompt (e.g., "{{Enter your name:}}"),
 // it prompts the user for input and replaces the variable with the user's response.
 // It can also handle prompts with a fixed set of answers (e.g., "{{Select color|red|green|blue}}").
-func (bm *BoilerplateManager) expandFirst(value string) (string, error) {
+func (bm *Engine) expandFirst(value string) (string, error) {
 	// Find the first variable part to expand using the precompiled regular expression.
 	loc := variableRe.FindStringIndex(value)
 	if loc == nil {

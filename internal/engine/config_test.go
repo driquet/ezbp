@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"fmt"
@@ -13,7 +13,7 @@ import (
 func TestLoadConfig_NoConfigFileExists(t *testing.T) {
 	configDir := t.TempDir()
 
-	config, err := loadConfigFromFile(configDir)
+	config, err := LoadConfigFromFile(configDir)
 	require.NoError(t, err, "loadConfig() should not return an error when no config exists")
 
 	expectedConfigFilePath := filepath.Join(configDir, defaultConfigFileName)
@@ -44,7 +44,7 @@ default_ui = "rofi"
 	err := os.WriteFile(configFilePath, fileContent, 0600)
 	require.NoError(t, err)
 
-	config, err := loadConfigFromFile(configDir)
+	config, err := LoadConfigFromFile(configDir)
 	require.NoError(t, err)
 	assert.Equal(t, customDatabasePath, config.DatabasePath)
 	assert.Equal(t, "rofi", config.DefaultUI)
@@ -59,7 +59,7 @@ func TestLoadConfig_ConfigFileExistsInvalidDefaultUI(t *testing.T) {
 	err := os.WriteFile(configFilePath, fileContent, 0600)
 	require.NoError(t, err)
 
-	config, err := loadConfigFromFile(configDir)
+	config, err := LoadConfigFromFile(configDir)
 	require.NoError(t, err)
 
 	// DefaultUI should be defaulted to "terminal"
@@ -74,7 +74,7 @@ func TestLoadConfig_ConfigFileExistsMissingPath(t *testing.T) {
 	err := os.WriteFile(configFilePath, fileContent, 0600)
 	require.NoError(t, err)
 
-	config, err := loadConfigFromFile(configDir)
+	config, err := LoadConfigFromFile(configDir)
 	require.NoError(t, err)
 
 	expectedDatabasePath := filepath.Join(configDir, defaultDatabaseFileName)
@@ -89,6 +89,6 @@ func TestLoadConfig_ConfigFileExistsMalformed(t *testing.T) {
 	err := os.WriteFile(configFilePath, fileContent, 0600)
 	require.NoError(t, err)
 
-	_, err = loadConfigFromFile(configDir)
+	_, err = LoadConfigFromFile(configDir)
 	require.Error(t, err, "loadConfig should return an error for malformed TOML")
 }
